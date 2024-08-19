@@ -1,9 +1,12 @@
 package com.venfriti.websocketexample
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,10 +23,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.venfriti.websocketexample.ui.theme.WebsocketExampleTheme
+import com.venfriti.websocketexample.ui.theme.dirtyWhite
 import io.socket.client.IO
 import io.socket.client.Socket
 import kotlinx.coroutines.Dispatchers
@@ -40,31 +45,42 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             WebsocketExampleTheme {
+                var name by remember { mutableStateOf("") }
                 var message by remember { mutableStateOf("") }
                 var receivedMessage by remember { mutableStateOf("") }
                 val scope = rememberCoroutineScope()
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    TextField(
-                        value = message,
-                        onValueChange = { message = it },
-                        label = { Text("Message") }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { sendMessage(message) }) {
-                        Text("Send Message")
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ){
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        TextField(
+                            value = message,
+                            onValueChange = { message = it },
+                            label = { Text("Message") }
+                        )
+                        TextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text("Sender") }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { sendMessage(name, message) }) {
+                            Text("Send Message")
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("$receivedMessage")
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(receivedMessage)
                 }
                 LaunchedEffect(Unit) {
-                    initSocketIO { receivedText ->
+                    initSocketIO { name, receivedText ->
                         scope.launch(Dispatchers.Main) {
-                            receivedMessage = receivedText
+                            receivedMessage = "$name: $receivedText"
                         }
                     }
                 }
@@ -72,7 +88,7 @@ class MainActivity : ComponentActivity() {
         }
         }
 
-    private fun initSocketIO(onMessageReceived: (String) -> Unit) {
+    private fun initSocketIO(onMessageReceived: (String, String) -> Unit) {
         try {
             socket = IO.socket("http://192.168.0.101:5000")
 
@@ -82,22 +98,29 @@ class MainActivity : ComponentActivity() {
 
             socket.on("message") { args ->
                 if (args.isNotEmpty()) {
-                    val msg = args[0]
-                    // Check if the message is already a String
-                    if (msg is String) {
-                        // If it's a JSON string, you can optionally parse it to JSONObject
-                        try {
-                            val jsonObject = JSONObject(msg)
-                            val text = jsonObject.getString("text") // Assuming the JSON contains a "text" field
-                            onMessageReceived(text)
-                        } catch (e: Exception) {
-                            // If it's not a JSON string, just handle it as a plain text message
-                            onMessageReceived(msg)
-                        }
+                    val msg = args[0] as? JSONObject
+                    if (msg != null) {
+                        val sender = msg.getString("name")
+                        val text = msg.getString("message")
+                        onMessageReceived(sender, text)
                     } else {
-                        // Handle other types if necessary
-                        println("Received unknown message type: $msg")
+                        println("Received unknown message type: $args")
                     }
+//                    // Check if the message is already a String
+//                    if (msg is String) {
+//                        // If it's a JSON string, you can optionally parse it to JSONObject
+//                        try {
+//                            val jsonObject = JSONObject(msg)
+//                            val text = jsonObject.getString("text") // Assuming the JSON contains a "text" field
+//                            onMessageReceived(text)
+//                        } catch (e: Exception) {
+//                            // If it's not a JSON string, just handle it as a plain text message
+//                            onMessageReceived(msg)
+//                        }
+//                    } else {
+//                        // Handle other types if necessary
+//                        println("Received unknown message type: $msg")
+//                    }
                 }
             }
 
@@ -111,27 +134,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendMessage(message: String) {
+    private fun sendMessage(name: String, message: String) {
         if (socket.connected()) {
             val jsonObject = JSONObject()
-            jsonObject.put("text", message)
+            jsonObject.put("name", name)
+            jsonObject.put("message", message)
             socket.emit("message", jsonObject)
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    WebsocketExampleTheme {
-        Greeting("Android")
     }
 }
